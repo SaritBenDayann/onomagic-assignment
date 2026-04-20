@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 from models import Allocation, Status, Platform
+from datetime import datetime
 
 class ChannelRepository(ABC):
     """
@@ -23,7 +24,7 @@ class ChannelRepository(ABC):
         pass
 
     @abstractmethod
-    def get_available_channel_from_pool(self) -> Optional[str]:
+    def get_available_channel_from_pool(self, current_time: datetime) -> Optional[str]:
         pass
 
 
@@ -63,20 +64,18 @@ class InMemoryChannelRepository(ChannelRepository):
         """Returns a list of all currently active allocations."""
         return [alloc for alloc in self._storage.values() if alloc.status == Status.ACTIVE]
         
-    def get_available_channel_from_pool(self) -> Optional[str]:
+    def get_available_channel_from_pool(self, current_time: datetime) -> Optional[str]:
         """
         Strategy:
-        1. Look for a freed channel that finished its 24h cooldown.
-        2. If none, generate a new onoX ID if within limits.
+        1. Look for a FREED channel that finished its 24h cooldown.
+        2. If none, generate a new 'onoX' ID if within limits.
         """
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
 
         # 1. Search for reusable channels
         for ch_id, alloc in self._storage.items():
             if alloc.status == Status.FREED and \
                alloc.available_at and \
-               alloc.available_at <= now:
+               alloc.available_at <= current_time:
                 return ch_id
 
         # 2. Generate new channel if possible

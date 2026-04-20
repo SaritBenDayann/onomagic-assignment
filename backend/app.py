@@ -25,7 +25,7 @@ def handle_error(message, status_code):
 @app.route('/api/allocate', methods=['POST'])
 def allocate_channel():
     """Handles channel allocation requests."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     ad_id = data.get('ad_id')
     platform = data.get('platform')
 
@@ -48,7 +48,7 @@ def allocate_channel():
 @app.route('/api/free', methods=['POST'])
 def free_channel():
     """Handles freeing an active channel to start its 24h cooldown."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     channel = data.get('channel')
 
     try:
@@ -65,7 +65,7 @@ def free_channel():
 @app.route('/api/cancel', methods=['POST'])
 def cancel_allocation():
     """Handles canceling an allocation if it's within the 5-minute window."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     channel = data.get('channel')
 
     try:
