@@ -5,12 +5,10 @@ from service import ChannelAllocationService, CancelWindowExpiredException, Conf
 from repository import InMemoryChannelRepository
 import concurrent.futures
 
-# TEST FIXTURES & MOCKS
-
 class MockClock:
-    """A fake clock to easily test 5-minute and 24-hour rules without waiting."""
+    """Mocking datetime to test time-dependent rules without relying on time.sleep()"""
     def __init__(self):
-        # Start time is fixed to avoid random test failures
+        # Fixed starting point to prevent flaky tests
         self.current_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         
     def __call__(self):
@@ -21,9 +19,9 @@ class MockClock:
 
 @pytest.fixture
 def service_env():
-    """Provides a fresh Service and Repository with a mocked clock for Unit Tests."""
+    """Setup a clean service instance with an isolated in-memory DB and mocked clock."""
     test_repo = InMemoryChannelRepository()
-    # Limit max channels to 1 to test exhaustion and cooldown blocks
+   # Restrict pool size to easily trigger exhaustion/cooldown scenarios
     test_repo._max_channels = 1 
     clock = MockClock()
     test_service = ChannelAllocationService(test_repo, get_time_func=clock)
@@ -31,18 +29,15 @@ def service_env():
 
 @pytest.fixture
 def client():
-    """Provides a Flask test client for API Integration Tests."""
+    """Flask test client setup with fresh DB state per test."""
     app.config['TESTING'] = True
     with app.test_client() as client:
-        # Reset the global in-memory DB before each API test
         repo._storage.clear()
         repo._next_channel_num = 1
         yield client
 
-# UNIT TESTS (Service Layer & Business Rules)
-
 def test_allocate_success_path(service_env):
-    """Test: allocate success path"""
+    """Verify standard allocation returns a valid, active channel."""
     service, clock = service_env
     allocation = service.allocate("ad_123", "fb")
     
@@ -51,7 +46,7 @@ def test_allocate_success_path(service_env):
     assert allocation.ad_id == "ad_123"
 
 def test_duplicate_active_behavior(service_env):
-    """Test: duplicate active (ad_id, platform) behavior blocks allocation"""
+    """Ensure the system blocks simultaneous active allocations for the same ad and platform."""
     service, clock = service_env
     # First allocation succeeds
     service.allocate("ad_123", "fb")
@@ -61,7 +56,7 @@ def test_duplicate_active_behavior(service_env):
         service.allocate("ad_123", "fb")
 
 def test_free_starts_cooldown_and_blocks_reallocation(service_env):
-    """Test: free starts cooldown and sets available_at. Reallocation blocked during cooldown."""
+    """Check that freeing a channel applies a 24-hour block before it can be reused."""
     service, clock = service_env
     allocation = service.allocate("ad_123", "fb")
     
@@ -86,7 +81,7 @@ def test_free_starts_cooldown_and_blocks_reallocation(service_env):
     assert new_allocation.channel_id == "ono1"
 
 def test_cancel_within_5_minutes_succeeds(service_env):
-    """Test: cancel within 5 minutes succeeds and frees immediately without cooldown."""
+    """Cancellation within the 5-minute window should bypass the cooldown completely."""
     service, clock = service_env
     allocation = service.allocate("ad_123", "fb")
     
@@ -99,7 +94,7 @@ def test_cancel_within_5_minutes_succeeds(service_env):
     assert canceled_allocation.available_at == clock()
 
 def test_cancel_after_5_minutes_fails(service_env):
-    """Test: cancel after 5 minutes fails with Window Expired Error."""
+    """Late cancellations should be rejected with a specific window expiration error."""
     service, clock = service_env
     allocation = service.allocate("ad_123", "fb")
     
@@ -109,10 +104,9 @@ def test_cancel_after_5_minutes_fails(service_env):
     with pytest.raises(CancelWindowExpiredException):
         service.cancel(allocation.channel_id)
 
-# INTEGRATION TESTS (API Layer & Status Codes)
 
 def test_api_platform_validation_failure(client):
-    """Test: platform validation failure returns 400 Bad Request."""
+    """Ensure API returns 400 Bad Request for unsupported platform types."""
     response = client.post('/api/allocate', json={
         "ad_id": "ad_123",
         "platform": "twitter"  # Invalid platform
@@ -121,12 +115,10 @@ def test_api_platform_validation_failure(client):
     assert "Invalid platform" in response.get_json()['error']
 
 def test_api_allocate_and_get_active(client):
-    """Integration: Test creating an allocation and retrieving it."""
-    # 1. Allocate
+    """End-to-end test: allocate a channel and verify it appears in the active list."""
     post_res = client.post('/api/allocate', json={"ad_id": "ad_1", "platform": "ob"})
     assert post_res.status_code == 201
     
-    # 2. Get Active
     get_res = client.get('/api/allocations/active')
     assert get_res.status_code == 200
     data = get_res.get_json()
@@ -135,14 +127,12 @@ def test_api_allocate_and_get_active(client):
     assert data['active_allocations'][0]['ad_id'] == "ad_1"
     assert data['active_allocations'][0]['platform'] == "ob"
 
-# EDGE CASES & BOUNDARY TESTS
 
 def test_cancel_exact_boundary_5_minutes(service_env):
-    """Cancel at 5 minutes (inclusive) should succeed."""
+   """Verify that cancellation exactly at the 5-minute mark (inclusive) is permitted."""
     service, clock = service_env
     allocation = service.allocate("ad_boundary", "fb")
     
-    # Advance exactly 5 minutes (0 to 5 is inclusive according to requirements)
     clock.advance(minutes=5)
     
     canceled = service.cancel(allocation.channel_id)
@@ -237,8 +227,6 @@ def test_allocate_after_quick_cancel(service_env):
     
     # It should seamlessly reuse the exact same channel
     assert alloc2.channel_id == alloc1.channel_id
-
-# CONCURRENCY TESTS
 
 def test_cooldown_exact_boundary(service_env):
     """Cooldown exact boundary validation (down to the second)."""
