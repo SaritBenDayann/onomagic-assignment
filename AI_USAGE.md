@@ -13,9 +13,14 @@ Once I had my blueprint, I used prompts to ask the AI to generate the foundation
 The core of the assignment was the rules (24h cooldown, 5-minute cancel window). I asked the AI to write this logic inside the `ChannelAllocationService`. 
 **My specific correction:** I realized that testing time-based logic (like waiting 5 minutes) is tricky. I instructed the AI to use **Dependency Injection** for the time mechanism (passing a `get_time_func` to the service). This was my design choice so I could mock the clock in my automated tests later without using `time.sleep()`.
 
-### Step 4: Code Review and Validation (My Part)
-After the AI generated the functions, I went over them line by line to verify they met the assignment's exact requirements and my logic. 
-* I manually adjusted the HTTP response codes to make sure they made sense (e.g., ensuring a duplicate active allocation returns a `409 Conflict` and an empty pool returns `404 Not Found`).
-* I reviewed the dictionary iterations in the Repository to ensure they actually enforce the "active uniqueness" rule for the `(ad_id, platform)` pairs.
+
+### Step 4: Frontend Development (My Logic + AI Styling)
+For the UI, I prioritized functional clarity over visual polish. I designed the component tree (`AllocationForm`, `ActiveChannelsTable`) and instructed the AI to generate the React boilerplate and basic CSS.
+* **My Correction:** To maintain clean components, I manually extracted all `fetch` logic into a dedicated `apiClient.js` service layer. I also enforced UI state locks to prevent users from firing overlapping requests.
+
+### Step 5: Code Review and Validation (My Part)
+I reviewed the generated code line by line to ensure adherence to the requirements and my logic:
+* I manually adjusted HTTP status codes to reflect precise backend semantics (`409 Conflict` for duplicates, `404 Not Found` for pool exhaustion).
+* I wrote comprehensive edge-case tests (DST jumps, midnight crossovers, exact boundary limits) to validate the business rules beyond the basic AI generation.
 
 **Summary:** The AI handled the typing and syntax, but the architectural decisions, the testability design, and the final code validation were completely mine.
