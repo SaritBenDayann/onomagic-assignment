@@ -129,7 +129,7 @@ def test_api_allocate_and_get_active(client):
 
 
 def test_cancel_exact_boundary_5_minutes(service_env):
-   """Verify that cancellation exactly at the 5-minute mark (inclusive) is permitted."""
+    """Verify that cancellation exactly at the 5-minute mark (inclusive) is permitted."""
     service, clock = service_env
     allocation = service.allocate("ad_boundary", "fb")
     
